@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# A base original pode conter dados pessoais e não deve ser publicada.
+Relatorio SIMEC Geral - Out-2025.csv
+dados/*.sqlite
+__pycache__/
