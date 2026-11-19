@@ -34,4 +34,10 @@ Somente registros cuja situação é `Concluída` são publicados. Os registros 
 
 As referências são obras do recorte selecionado com valor contratado e quantidade positivos e a mesma unidade de medida. O custo unitário é valor contratado dividido pela quantidade. A estimativa multiplica a mediana dos custos unitários pela quantidade informada; a faixa usa os quartis 25% e 75% calculados por interpolação linear. O usuário pode excluir referências.
 
-**Estado atual:** os valores são nominais, sem atualização monetária. As séries INCC, IGP-M e IPCA ainda precisam ser integradas e verificadas com suas fontes e condições de uso; não há índices fictícios ou correção automática. As obras duplicadas permanecem disponíveis e exigem análise antes de serem tratadas como referências independentes.
+**Estado atual:** valores nominais ou atualização opcional pelo INCC provisório. IGP-M e IPCA ainda não estão integrados. Obras duplicadas permanecem disponíveis e exigem análise antes de serem tratadas como referências independentes.
+
+## Série INCC provisória
+
+O arquivo manual `INCC.csv` pode ser processado com `npm run prepare:incc`, gerando `public/incc.json`. A série cobre janeiro de 1995 a agosto de 2025. O processamento mantém o índice e a variação mensal informada, e identifica meses ausentes, duplicidades e discrepâncias entre variação e razão de índices consecutivos.
+
+A fonte original, a variante da série e a precisão dos dados ainda precisam ser confirmadas. Há quatro divergências registradas no JSON; não foram corrigidas automaticamente. O site permite optar por essa série provisória, dividindo o índice do mês de destino pelo índice do mês de assinatura. Essa assinatura é apenas uma aproximação da data-base; obras sem índice, data válida ou com assinatura posterior ao destino ficam fora dos cálculos atualizados. O filtro de valor usa o valor original; CSV e PDF identificam o modo e preservam o valor original.

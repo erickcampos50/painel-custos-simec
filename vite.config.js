@@ -9,4 +9,9 @@ const githubPagesBase = repository && !repository.toLowerCase().endsWith('.githu
 
 export default defineConfig({
   base: process.env.GITHUB_ACTIONS === 'true' ? githubPagesBase : '/',
+  server: {
+    watch: {
+      ignored: ['**/*.csv', '**/*.sqlite', '**/*.sqlite-*'],
+    },
+  },
 });
