@@ -27,6 +27,7 @@ export function generateReport({ reference, filters, ranges, search, quantity, r
     `Estimativa total = ${money(refStats.median)} x ${n(quantity)} = ${money(quantity > 0 && refStats.median != null ? quantity * refStats.median : null)}.`,
     `Faixa total (P25 a P75): ${money(quantity > 0 && refStats.q1 != null ? quantity * refStats.q1 : null)} a ${money(quantity > 0 && refStats.q3 != null ? quantity * refStats.q3 : null)}.`,
     'Quartis e mediana calculados por interpolação linear. Os valores estimados não constituem o CUB oficial.',
+    'Datas de execução derivadas: início informado, ordem de serviço ou assinatura; fim informado ou prazo de execução, priorizando prazo após aditivo. Prazo não comprova conclusão. Vistorias não são utilizadas.',
     '',
     'Dados das referências selecionadas',
     'Valores originais e quantidades são os dados normalizados do arquivo. Custo unitário é calculado.',
@@ -41,7 +42,7 @@ export function generateReport({ reference, filters, ranges, search, quantity, r
     doc.text(wrapped, 16, y); y += height + 1;
   }
   const raw = reference.map(w => [
-    `ID: ${w.id || '—'}\nObra: ${w.name || '—'}\nInstituição: ${w.institution || '—'} · ${w.university || '—'}\nCampus: ${w.campus || '—'}\nLocal: ${[w.city,w.state].filter(Boolean).join(', ') || '—'}\nTipo: ${w.type || '—'} · ${w.typology || '—'}\nContrato: ${w.date || '—'} · Conclusão: ${w.completion || '—'}\n${mode === 'incc' ? `Valor original: ${money(w.originalValue)} · Fator: ${w.factor.toFixed(6)}\n` : ''}Descrição: ${w.description || '—'}\nLink: ${w.link || '—'}`,
+    `ID: ${w.id || '—'}\nObra: ${w.name || '—'}\nInstituição: ${w.institution || '—'} · ${w.university || '—'}\nCampus: ${w.campus || '—'}\nLocal: ${[w.city,w.state].filter(Boolean).join(', ') || '—'}\nTipo: ${w.type || '—'} · ${w.typology || '—'}\nContrato: ${w.date || '—'}\nInício: ${w.datas_execucao?.inicio?.data || '—'} · ${w.datas_execucao?.inicio?.fonte || 'não informado'}\nFim: ${w.datas_execucao?.fim?.data || '—'} · ${w.datas_execucao?.fim?.fonte || 'não informado'} · ${w.datas_execucao?.fim?.tipo || '—'}\nCoerência: ${w.datas_execucao?.situacao || '—'}\n${mode === 'incc' ? `Valor original: ${money(w.originalValue)} · Fator: ${w.factor.toFixed(6)}\n` : ''}Descrição: ${w.description || '—'}\nLink: ${w.link || '—'}`,
     `${n(w.quantity)} ${w.unit === 'm2' ? 'm²' : w.unit}`,
     money(w.value),
     money(w.value / w.quantity),

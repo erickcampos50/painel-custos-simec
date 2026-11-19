@@ -2,6 +2,7 @@
 import csv
 import json
 from pathlib import Path
+from date_hierarchy import START_FIELDS, END_FIELDS, derive_dates
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "Relatorio SIMEC Geral - Out-2025.csv"
@@ -42,6 +43,8 @@ def main():
                 "value": value,
                 "date": row.get("Data de Assinatura do Contrato", "").strip(),
                 "completion": row.get("Data de Conclusão da Obra", "").strip(),
+                "datas_originais": {field: row.get(field, "").strip() for field, _ in START_FIELDS + END_FIELDS},
+                "datas_execucao": derive_dates(row),
                 "link": ("https:" + row["Link da Vistoria Mais Recente"]) if row.get("Link da Vistoria Mais Recente", "").startswith("//") else "",
             })
     TARGET.parent.mkdir(parents=True, exist_ok=True)
