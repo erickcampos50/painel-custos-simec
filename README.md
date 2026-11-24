@@ -2,6 +2,10 @@
 
 Aplicação pública para explorar obras concluídas do SIMEC e calcular referências de custos a partir do valor contratado por unidade de medida.
 
+A página inicial oferece estimativas preliminares com quantidade e/ou orçamento, duração histórica observada e preenchimento assistido. O painel usa `public/obras.json`, e não consulta um banco ao vivo. A duração considera apenas datas informadas e coerentes de início e conclusão, sem usar prazos previstos como conclusão; é uma referência histórica, não uma previsão ajustada ao porte da obra. O PDF do painel reúne custo, duração, orçamento quando informado e referências; o explorador avançado mantém seu memorial de custo separado. O explorador completo permanece acessível pelo link no cabeçalho.
+
+Para continuidade técnica e metodológica, consulte [CONTINUIDADE.md](CONTINUIDADE.md). A ferramenta é independente e não possui vínculo com o SIMEC ou o MEC; sua estimativa não é o CUB oficial.
+
 ## Executar localmente
 
 Requisitos: Node.js, npm e Python 3.
@@ -22,11 +26,11 @@ Abra o endereço informado pelo Vite. O arquivo reduzido `public/obras.json` dev
 4. O fluxo `.github/workflows/deploy.yml` será executado a cada envio ao `main`; também pode ser iniciado em **Actions → Publicar no GitHub Pages → Run workflow**.
 5. Após a execução, consulte o endereço em **Settings → Pages** ou no resultado da etapa de publicação. Repositórios de projeto usam `https://<usuário>.github.io/<repositório>/`; repositórios `<usuário>.github.io` usam a raiz do domínio.
 
-O build identifica automaticamente o prefixo do repositório no GitHub Actions. O site é estático: o banco SQLite não é utilizado no navegador e não há servidor ou área administrativa. O CSV original e o banco SQLite estão no `.gitignore`; confirme sempre os arquivos incluídos antes de um commit. Se a branch padrão não for `main`, altere o fluxo de publicação.
+O build identifica automaticamente o prefixo do repositório no GitHub Actions. O site é estático: o banco SQLite não é utilizado no navegador e não há servidor ou área administrativa. **O CSV original e o banco SQLite já foram incluídos no histórico Git**, por decisão do usuário. A presença de seus caminhos no `.gitignore` não protege arquivos já rastreados nem os remove do histórico; em um repositório público, eles podem ser acessados, mesmo não sendo publicados em `dist`. Revise os dados e o histórico antes de qualquer publicação. Se a branch padrão não for `main`, altere o fluxo de publicação.
 
 ## Atualizar a base
 
-Coloque o arquivo `Relatorio SIMEC Geral - Out-2025.csv` na raiz e execute `npm run prepare:data`. O script usa um leitor CSV com separador de tabulação, inclusive para campos com quebras de linha, e gera `public/obras.json`. Revise o JSON e inclua a nova versão no commit para publicação. O GitHub Actions não recebe nem processa o CSV original. A referência de outubro de 2025 exibida no site e no relatório corresponde ao arquivo atual e deve ser atualizada no código caso a fonte seja substituída por outro retrato.
+Coloque o arquivo `Relatorio SIMEC Geral - Out-2025.csv` na raiz e execute `npm run prepare:data`. O script usa um leitor CSV com separador de tabulação, inclusive para campos com quebras de linha, e gera `public/obras.json`. Revise o JSON e inclua a nova versão no commit para publicação. O GitHub Actions faz checkout do repositório, inclusive de arquivos rastreados, mas não processa o CSV original: publica o conteúdo de `dist`. A referência de outubro de 2025 exibida no site e no relatório corresponde ao arquivo atual e deve ser atualizada no código caso a fonte seja substituída por outro retrato.
 
 Somente registros cuja situação é `Concluída` são publicados. Os registros repetidos não são removidos automaticamente. O arquivo JSON contém uma seleção de campos de obras, sem contatos ou dados de empresas. Antes de publicar uma base nova, é necessário revisá-la, inclusive textos livres e eventuais dados pessoais neles presentes.
 
@@ -34,13 +38,17 @@ Somente registros cuja situação é `Concluída` são publicados. Os registros 
 
 As referências são obras do recorte selecionado com valor contratado e quantidade positivos e a mesma unidade de medida. O custo unitário é valor contratado dividido pela quantidade. A estimativa multiplica a mediana dos custos unitários pela quantidade informada; a faixa usa os quartis 25% e 75% calculados por interpolação linear. O usuário pode excluir referências.
 
-**Estado atual:** valores nominais ou atualização opcional pelo INCC provisório. IGP-M e IPCA ainda não estão integrados. Obras duplicadas permanecem disponíveis e exigem análise antes de serem tratadas como referências independentes.
+**Estado atual:** valores nominais ou atualização pelo INCC-Brasil-DI ou IGP-M. IPCA ainda não está integrado. Obras duplicadas permanecem disponíveis e exigem análise antes de serem tratadas como referências independentes.
 
-## Série INCC provisória
+## Séries de índices FGV IBRE
 
-O arquivo manual `INCC.csv` pode ser processado com `npm run prepare:incc`, gerando `public/incc.json`. A série cobre janeiro de 1995 a agosto de 2025. O processamento mantém o índice e a variação mensal informada, e identifica meses ausentes, duplicidades e discrepâncias entre variação e razão de índices consecutivos.
+O arquivo `Indices.csv`, fornecido pelo usuário a partir do [FGV Dados / FGV IBRE](https://extra-ibre.fgv.br/IBRE/sitefgvdados/visualizaconsulta.aspx), contém **INCC-Brasil-DI - Todos os itens (1464783)**, de julho de 1996 a outubro de 2026, e **IGP-M (200045)**, de junho de 1989 a outubro de 2026. O arquivo atual não apresenta lacunas dentro dessas coberturas. As séries anteriores, de origem e variante não confirmadas, não são mescladas à nova fonte.
 
-A fonte original, a variante da série e a precisão dos dados ainda precisam ser confirmadas. Há quatro divergências registradas no JSON; não foram corrigidas automaticamente. O site permite optar por essa série provisória, dividindo o índice do mês de destino pelo índice do mês de assinatura. Essa assinatura é apenas uma aproximação da data-base; obras sem índice, data válida ou com assinatura posterior ao destino ficam fora dos cálculos atualizados. O filtro de valor usa o valor original; CSV e PDF identificam o modo e preservam o valor original.
+Para atualizar, exporte as mesmas séries e códigos no endereço acima para `Indices.csv` na raiz. O formato esperado é CSV Windows-1252, separado por ponto e vírgula, data `MM/AAAA`, vírgula decimal e índices (não variações percentuais). Execute `npm run prepare:indices` para validar e gerar `public/incc.json` e `public/igpm.json`. Revise a cobertura, os meses ausentes e as condições de uso dos dados antes de publicar. Os JSONs devem ser incluídos na publicação; o GitHub Actions não os regenera.
+
+Para atualizar **também** as tabelas de índices do banco SQLite local existente, execute `python scripts/prepare_indices.py --sqlite dados/simec_concluidas.sqlite`. Isso substitui somente as linhas das duas séries nas tabelas `series_indices` e `indices_mensais`; não recria nem modifica a tabela `obras`. O site estático continua lendo os JSONs, não o SQLite.
+
+O fator é índice do mês de destino dividido pelo índice do mês de assinatura. A assinatura é apenas aproximação da data-base: obras sem índice, data válida ou com assinatura posterior ao destino ficam fora dos cálculos atualizados. Não há extrapolação para meses sem dados. O filtro de valor no explorador usa o valor original; CSV e PDF identificam a série e preservam o original.
 
 ## Datas de execução
 
