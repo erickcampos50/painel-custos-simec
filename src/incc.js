@@ -9,7 +9,8 @@ export function contractMonth(date) {
 
 export function updateWork(work, mode, target, indices) {
   const originalValue = work.value;
-  if (mode !== 'incc') return {...work, originalValue, factor:1};
+  if (mode === 'nominal') return {...work, originalValue, factor:1};
+  if (mode !== 'incc' && mode !== 'igpm') return {...work, originalValue, value:null, factor:null};
   const origin = contractMonth(work.date);
   const initial = indices[origin], final = indices[target];
   if (!origin || !initial || !final || origin > target || !(originalValue > 0)) {

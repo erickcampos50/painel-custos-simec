@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "prepare:data": "python scripts/prepare_data.py",
-    "prepare:incc": "python scripts/prepare_incc.py",
+    "prepare:indices": "python scripts/prepare_indices.py",
+    "prepare:incc": "python scripts/prepare_indices.py",
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview"

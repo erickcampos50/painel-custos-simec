@@ -23,5 +23,16 @@ SELECT "ID", "Nome da Obra" FROM obras LIMIT 10;
 ```
 
 O banco preserva todos os campos do CSV, inclusive possíveis dados pessoais ou
-sensíveis. Mantenha-o local e não o copie para `public` nem o exponha no frontend.
+sensíveis. Não o copie para `public` nem o exponha no frontend. **Atenção:** o
+arquivo já foi incluído no histórico Git por decisão do usuário. O `.gitignore`
+não impede acesso ao histórico nem deixa de rastrear um arquivo já incluído;
+avalie a exposição antes de tornar o repositório público.
 O script não altera o CSV nem o fluxo existente de preparação de dados públicos.
+
+## Índices econômicos
+
+`python scripts/prepare_indices.py --sqlite dados/simec_concluidas.sqlite` atualiza
+as tabelas `series_indices` e `indices_mensais` a partir de `Indices.csv`, sem
+recriar a tabela `obras`. Também gera os JSONs usados pelo site. Fonte para futuras
+atualizações: https://extra-ibre.fgv.br/IBRE/sitefgvdados/visualizaconsulta.aspx.
+Consulte o README para os códigos das séries, formato e limites da atualização.

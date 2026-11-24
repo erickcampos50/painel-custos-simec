@@ -2,6 +2,11 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {contractMonth, updateWork} from '../src/incc.js';
 
+test('IGP-M usa a série selecionada, sem misturar valores nominais', () => {
+  assert.equal(updateWork({value:100, date:'01/06/2020'}, 'igpm', '2021-06', {'2020-06':100,'2021-06':140}).value, 140);
+  assert.equal(updateWork({value:100, date:'01/06/2020'}, 'igpm', '2021-06', {'2021-06':140}).value, null);
+});
+
 test('corrige pela razão entre os índices dos meses', () => {
   const result = updateWork({value:100, date:'01/06/2020'}, 'incc', '2021-06', {'2020-06':100,'2021-06':125});
   assert.equal(result.value,125);
