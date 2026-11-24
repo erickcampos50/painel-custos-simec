@@ -2,7 +2,11 @@
 
 Aplicação pública para explorar obras concluídas do SIMEC e calcular referências de custos a partir do valor contratado por unidade de medida.
 
-A página inicial oferece estimativas preliminares com quantidade e/ou orçamento, duração histórica observada e preenchimento assistido. O painel usa `public/obras.json`, e não consulta um banco ao vivo. A duração considera apenas datas informadas e coerentes de início e conclusão, sem usar prazos previstos como conclusão; é uma referência histórica, não uma previsão ajustada ao porte da obra. O PDF do painel reúne custo, duração, orçamento quando informado e referências; o explorador avançado mantém seu memorial de custo separado. O explorador completo permanece acessível pelo link no cabeçalho.
+A página inicial oferece estimativas preliminares com quantidade e/ou orçamento, duração histórica observada e preenchimento assistido. O painel usa `public/obras.json`, e não consulta um banco ao vivo. A duração considera apenas datas informadas e coerentes de início e conclusão, sem usar prazos previstos como conclusão; é uma referência histórica, não uma previsão garantida. O relatório PDF inclui os critérios de porte e a duração histórica. A página de exploração avançada está em construção.
+
+Ao informar quantidade e/ou orçamento, a faixa de porte pode ser aplicada separadamente ao custo unitário e ao prazo; ambos os controles vêm marcados. No custo, a faixa seleciona obras pela quantidade informada; no prazo, considera quantidade e/ou valor contratado, simultaneamente quando ambos são preenchidos. O orçamento máximo não restringe o custo unitário: é usado como aproximação do valor da obra para o prazo. A faixa padrão é de 75% a 125% e pode ser ajustada. Na comparação monetária usa-se o índice e mês selecionados, ou valores nominais quando essa opção é escolhida; obras sem valor atualizado válido ficam fora do recorte monetário. A regra é uma heurística exploratória não calibrada, não uma garantia de prazo; sem referências elegíveis a ferramenta não amplia a faixa automaticamente.
+
+Para ajustar os limites, abra **“Ajustar faixa de porte”** ao lado do título dos dados do projeto. Os controles permitem limites de 1% a 400% e podem ser desmarcados individualmente; sem quantidade informada não se aplica filtro de quantidade. Indique **“Minha obra não é definida por área”** para escolher outra unidade da base. Unidades registradas de forma distinta não são mescladas ou convertidas automaticamente.
 
 Para continuidade técnica e metodológica, consulte [CONTINUIDADE.md](CONTINUIDADE.md). A ferramenta é independente e não possui vínculo com o SIMEC ou o MEC; sua estimativa não é o CUB oficial.
 
@@ -12,11 +16,10 @@ Requisitos: Node.js, npm e Python 3.
 
 ```bash
 npm install
-npm run prepare:data
 npm run dev
 ```
 
-Abra o endereço informado pelo Vite. O arquivo reduzido `public/obras.json` deve estar presente; se ele já estiver disponível, não é necessário ter o CSV para executar o site. O projeto não possui área administrativa.
+Abra o endereço informado pelo Vite. Os arquivos `public/obras.json`, `public/incc.json` e `public/igpm.json` precisam estar disponíveis para usar os respectivos dados. Para regenerar a base de obras, execute `npm run prepare:data` com o CSV original na raiz; isso não é necessário se `public/obras.json` já estiver pronto. O projeto não possui área administrativa.
 
 ## Publicar no GitHub Pages
 
@@ -48,7 +51,7 @@ Para atualizar, exporte as mesmas séries e códigos no endereço acima para `In
 
 Para atualizar **também** as tabelas de índices do banco SQLite local existente, execute `python scripts/prepare_indices.py --sqlite dados/simec_concluidas.sqlite`. Isso substitui somente as linhas das duas séries nas tabelas `series_indices` e `indices_mensais`; não recria nem modifica a tabela `obras`. O site estático continua lendo os JSONs, não o SQLite.
 
-O fator é índice do mês de destino dividido pelo índice do mês de assinatura. A assinatura é apenas aproximação da data-base: obras sem índice, data válida ou com assinatura posterior ao destino ficam fora dos cálculos atualizados. Não há extrapolação para meses sem dados. O filtro de valor no explorador usa o valor original; CSV e PDF identificam a série e preservam o original.
+O fator é índice do mês de destino dividido pelo índice do mês de assinatura. A assinatura é apenas aproximação da data-base: obras sem índice, data válida ou com assinatura posterior ao destino ficam fora dos cálculos atualizados. Não há extrapolação para meses sem dados. O PDF identifica a série e preserva o valor original.
 
 ## Datas de execução
 

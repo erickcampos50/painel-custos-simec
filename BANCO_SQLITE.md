@@ -10,6 +10,9 @@ O arquivo gerado é `dados/simec_concluidas.sqlite`. Para outras localizações,
 use `--csv caminho.csv --saida caminho.sqlite`. A execução substitui o banco de
 saída existente após uma importação bem-sucedida; mantenha uma cópia se necessário.
 O CSV deve estar em UTF-8 (com ou sem BOM), com campos separados por tabulação.
+**A recriação substitui o banco inteiro**, inclusive as tabelas de índices que
+tenham sido acrescentadas posteriormente. Depois de recriá-lo, execute novamente
+o comando de atualização de índices abaixo, se essas tabelas forem necessárias.
 
 A tabela `obras` contém todas as colunas originais como texto, sem conversões ou
 remoção de duplicatas. O filtro é `Situação da Obra` igual a `Concluída`, após
