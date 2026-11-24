@@ -1,4 +1,4 @@
-# Observatório de Custos Universitários
+# Custo unitário de obras universitárias
 
 Aplicação pública para explorar obras concluídas do SIMEC e calcular referências de custos a partir do valor contratado por unidade de medida.
 
