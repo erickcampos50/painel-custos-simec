@@ -5,10 +5,12 @@ const n = value => value == null || !Number.isFinite(value) ? 'Não disponível'
 const money = value => value == null || !Number.isFinite(value) ? 'Não disponível' : value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const labels = {state:'UF',city:'Município',institution:'Instituição',type:'Tipo',typology:'Tipologia',unit:'Unidade',quantityMin:'Quantidade mínima',quantityMax:'Quantidade máxima',valueMin:'Valor mínimo',valueMax:'Valor máximo',yearMin:'Ano inicial do contrato',yearMax:'Ano final do contrato'};
 
-export function generateReport({ reference, filters, ranges, search, quantity, refStats, candidateCount, mode, target, incc, excludedByIncc }) {
+export function generateReport({ reference, selectedReferences, filters, ranges, search, quantity, refStats, candidateCount, mode, target, incc, excludedByIncc, durationResult, durationBudget, sizeOptions }) {
   const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4', compress:true });
   const updated = mode !== 'nominal';
   const seriesName = incc?.nome || (mode === 'igpm' ? 'IGP-M' : 'INCC-Brasil-DI');
+  const durationKeys = new Set((durationResult?.references || []).map(item => item.work.key));
+  const costKeys = new Set(reference.map(w => w.key));
   const lines = [
     'Memorial de cálculo · Estimativa de custo unitário',
     'Projeto independente, sem vínculo institucional com o SIMEC ou o MEC.',
@@ -20,9 +22,11 @@ export function generateReport({ reference, filters, ranges, search, quantity, r
     'Critérios do recorte',
     ...Object.entries({...filters,...ranges}).filter(([,v]) => Array.isArray(v) ? v.length : v != null && v !== '').map(([k,v]) => `${labels[k] || k}: ${Array.isArray(v) ? v.join(', ') : v === 'm2' ? 'm²' : v}`),
     ...(search ? [`Nome da obra: ${search}`] : []),
-    `Obras elegíveis no recorte: ${n(candidateCount)}. Referências selecionadas: ${n(reference.length)}. Excluídas manualmente: ${n(candidateCount-reference.length)}.`,
+    `Obras elegíveis no recorte: ${n(candidateCount)}. Selecionadas: ${n(selectedReferences.length)}. Excluídas manualmente: ${n(candidateCount-selectedReferences.length)}. Usadas no custo: ${n(reference.length)}.`,
     '',
     'Memorial de cálculo',
+    `Faixa de porte configurada: ${n(sizeOptions.lowerFactor * 100)}% a ${n(sizeOptions.upperFactor * 100)}%. Aplicada ao custo: ${sizeOptions.applyCostSize ? 'sim' : 'não'}; aplicada ao prazo: ${sizeOptions.applyDurationSize ? 'sim' : 'não'}.`,
+    sizeOptions.applyCostSize && quantity > 0 ? `Quantidade para custo: ${n(quantity * sizeOptions.lowerFactor)} a ${n(quantity * sizeOptions.upperFactor)} ${filters.unit === 'm2' ? 'm²' : filters.unit}.` : 'Custo sem restrição por porte de quantidade.',
     `Custo unitário de cada referência = valor ${updated ? 'atualizado' : 'contratado'} / quantidade da obra (${filters.unit === 'm2' ? 'm²' : filters.unit || 'unidade'}).`,
     `Mediana dos custos unitários: ${money(refStats.median)}. P25: ${money(refStats.q1)}. P75: ${money(refStats.q3)}.`,
     `Quantidade do projeto: ${n(quantity)} ${filters.unit === 'm2' ? 'm²' : filters.unit || ''}.`,
@@ -31,20 +35,31 @@ export function generateReport({ reference, filters, ranges, search, quantity, r
     'Quartis e mediana calculados por interpolação linear. Os valores estimados não constituem o CUB oficial.',
     'Datas de execução derivadas: início informado, ordem de serviço ou assinatura; fim informado ou prazo de execução, priorizando prazo após aditivo. Prazo não comprova conclusão. Vistorias não são utilizadas.',
     '',
+    'Duração histórica por porte',
+    ...(durationResult ? [
+      `Orçamento máximo: ${durationBudget > 0 ? money(durationBudget) : 'não informado'}. Faixa: ${n(durationResult.lowerFactor * 100)}% a ${n(durationResult.upperFactor * 100)}% ${durationResult.hasQuantity && durationResult.hasBudget ? 'da quantidade e do orçamento simultaneamente' : durationResult.hasQuantity ? 'da quantidade' : durationResult.hasBudget ? 'do orçamento' : sizeOptions.applyDurationSize ? '(sem dados de porte, não aplicada)' : '(filtro de prazo desativado)'}.`,
+      ...(durationResult.hasQuantity ? [`Quantidade para prazo: ${n(quantity * durationResult.lowerFactor)} a ${n(quantity * durationResult.upperFactor)} ${filters.unit === 'm2' ? 'm²' : filters.unit}.`] : []),
+      ...(durationResult.hasBudget ? [`Valor contratado para prazo: ${money(durationBudget * durationResult.lowerFactor)} a ${money(durationBudget * durationResult.upperFactor)}.`] : []),
+      `Obras selecionadas no porte: ${n(durationResult.sizeEligible.length)}. Obras com datas válidas: ${n(durationResult.statistics.count)}. Mediana: ${n(durationResult.statistics.median)} dias. P25–P75: ${n(durationResult.statistics.q1)} a ${n(durationResult.statistics.q3)} dias.`,
+      `O orçamento máximo aproxima o valor da obra, comparado aos valores ${updated ? `atualizados por ${seriesName} em ${target}` : 'nominais, de datas diferentes'}. A faixa é heurística não calibrada, não corrige a duração nem garante o prazo.`,
+      'Somente início de execução e conclusão informados, coerentes e com intervalo positivo são utilizados. Prazos contratuais e inícios aproximados não são conclusão efetiva.',
+      ...(durationResult.statistics.count < 5 ? ['Amostra com menos de cinco durações; o resultado pode ser pouco representativo.'] : []),
+    ] : ['Não calculada: fatores de porte inválidos.']),
+    '',
     'Dados das referências selecionadas',
     'Valores originais e quantidades são os dados normalizados do arquivo. Custo unitário é calculado.',
   ];
   let y = 18;
   for (const [i,line] of lines.entries()) {
-    doc.setFont('helvetica', i === 0 || ['Critérios do recorte','Memorial de cálculo','Dados das referências selecionadas'].includes(line) ? 'bold' : 'normal');
+    doc.setFont('helvetica', i === 0 || ['Critérios do recorte','Memorial de cálculo','Duração histórica por porte','Dados das referências selecionadas'].includes(line) ? 'bold' : 'normal');
     doc.setFontSize(i === 0 ? 15 : 10);
     const wrapped = doc.splitTextToSize(line || ' ', 178);
     const height = wrapped.length * (i === 0 ? 7 : 5);
     if (y + height > 280) {doc.addPage(); y = 18;}
     doc.text(wrapped, 16, y); y += height + 1;
   }
-  const raw = reference.map(w => [
-    `ID: ${w.id || '—'}\nObra: ${w.name || '—'}\nInstituição: ${w.institution || '—'} · ${w.university || '—'}\nCampus: ${w.campus || '—'}\nLocal: ${[w.city,w.state].filter(Boolean).join(', ') || '—'}\nTipo: ${w.type || '—'} · ${w.typology || '—'}\nContrato: ${w.date || '—'}\nInício: ${w.datas_execucao?.inicio?.data || '—'} · ${w.datas_execucao?.inicio?.fonte || 'não informado'}\nFim: ${w.datas_execucao?.fim?.data || '—'} · ${w.datas_execucao?.fim?.fonte || 'não informado'} · ${w.datas_execucao?.fim?.tipo || '—'}\nCoerência: ${w.datas_execucao?.situacao || '—'}\n${updated ? `Valor original: ${money(w.originalValue)} · Fator: ${w.factor.toFixed(6)}\n` : ''}Descrição: ${w.description || '—'}\nLink: ${w.link || '—'}`,
+  const raw = selectedReferences.map(w => [
+    `ID: ${w.id || '—'}\nObra: ${w.name || '—'}\nInstituição: ${w.institution || '—'} · ${w.university || '—'}\nCampus: ${w.campus || '—'}\nLocal: ${[w.city,w.state].filter(Boolean).join(', ') || '—'}\nTipo: ${w.type || '—'} · ${w.typology || '—'}\nContrato: ${w.date || '—'}\nInício: ${w.datas_execucao?.inicio?.data || '—'} · ${w.datas_execucao?.inicio?.fonte || 'não informado'}\nFim: ${w.datas_execucao?.fim?.data || '—'} · ${w.datas_execucao?.fim?.fonte || 'não informado'} · ${w.datas_execucao?.fim?.tipo || '—'}\nCoerência: ${w.datas_execucao?.situacao || '—'}\nUsada no custo: ${costKeys.has(w.key) ? 'sim' : 'não'} · No prazo: ${durationKeys.has(w.key) ? 'sim' : 'não'}\n${updated ? `Valor original: ${money(w.originalValue)} · Fator: ${w.factor.toFixed(6)}\n` : ''}Descrição: ${w.description || '—'}\nLink: ${w.link || '—'}`,
     `${n(w.quantity)} ${w.unit === 'm2' ? 'm²' : w.unit}`,
     money(w.value),
     money(w.value / w.quantity),
