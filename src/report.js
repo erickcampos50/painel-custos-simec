@@ -7,13 +7,15 @@ const labels = {state:'UF',city:'Município',institution:'Instituição',type:'T
 
 export function generateReport({ reference, filters, ranges, search, quantity, refStats, candidateCount, mode, target, incc, excludedByIncc }) {
   const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4', compress:true });
+  const updated = mode !== 'nominal';
+  const seriesName = incc?.nome || (mode === 'igpm' ? 'IGP-M' : 'INCC-Brasil-DI');
   const lines = [
     'Memorial de cálculo · Estimativa de custo unitário',
     'Projeto independente, sem vínculo institucional com o SIMEC ou o MEC.',
     'Fonte: dados de obras concluídas do SIMEC/MEC. Extração: outubro de 2025 (dia não informado).',
     'Revisão da base: não informada. Gerado em: ' + new Date().toLocaleString('pt-BR'),
-    mode === 'incc' ? `Atualização: INCC provisório, mês de destino ${target}. Fonte original e variante não verificadas; quatro divergências identificadas na série.` : 'Valores contratados nominais; nenhuma atualização monetária aplicada.',
-    ...(mode === 'incc' ? [`Fator = índice de ${target} (${incc.registros.find(r => r.periodo === target)?.indice}) / índice do mês de assinatura do contrato, usado como aproximação da data-base.`, `Obras com valor positivo sem atualização possível no recorte: ${n(excludedByIncc)}. Datas posteriores ao destino e meses ausentes não são atualizados.`] : []),
+    updated ? `Atualização: ${seriesName}, FGV IBRE, mês de destino ${target}.` : 'Valores contratados nominais; nenhuma atualização monetária aplicada.',
+    ...(updated ? [`Fator = índice de ${target} (${incc?.registros.find(r => r.periodo === target)?.indice}) / índice do mês de assinatura do contrato, usado como aproximação da data-base.`, `Obras com valor positivo sem atualização possível no recorte: ${n(excludedByIncc)}. Datas posteriores ao destino e meses ausentes não são atualizados.`] : []),
     '',
     'Critérios do recorte',
     ...Object.entries({...filters,...ranges}).filter(([,v]) => Array.isArray(v) ? v.length : v != null && v !== '').map(([k,v]) => `${labels[k] || k}: ${Array.isArray(v) ? v.join(', ') : v === 'm2' ? 'm²' : v}`),
@@ -21,7 +23,7 @@ export function generateReport({ reference, filters, ranges, search, quantity, r
     `Obras elegíveis no recorte: ${n(candidateCount)}. Referências selecionadas: ${n(reference.length)}. Excluídas manualmente: ${n(candidateCount-reference.length)}.`,
     '',
     'Memorial de cálculo',
-    `Custo unitário de cada referência = valor ${mode === 'incc' ? 'atualizado' : 'contratado'} / quantidade da obra (${filters.unit === 'm2' ? 'm²' : filters.unit || 'unidade'}).`,
+    `Custo unitário de cada referência = valor ${updated ? 'atualizado' : 'contratado'} / quantidade da obra (${filters.unit === 'm2' ? 'm²' : filters.unit || 'unidade'}).`,
     `Mediana dos custos unitários: ${money(refStats.median)}. P25: ${money(refStats.q1)}. P75: ${money(refStats.q3)}.`,
     `Quantidade do projeto: ${n(quantity)} ${filters.unit === 'm2' ? 'm²' : filters.unit || ''}.`,
     `Estimativa total = ${money(refStats.median)} x ${n(quantity)} = ${money(quantity > 0 && refStats.median != null ? quantity * refStats.median : null)}.`,
@@ -42,12 +44,12 @@ export function generateReport({ reference, filters, ranges, search, quantity, r
     doc.text(wrapped, 16, y); y += height + 1;
   }
   const raw = reference.map(w => [
-    `ID: ${w.id || '—'}\nObra: ${w.name || '—'}\nInstituição: ${w.institution || '—'} · ${w.university || '—'}\nCampus: ${w.campus || '—'}\nLocal: ${[w.city,w.state].filter(Boolean).join(', ') || '—'}\nTipo: ${w.type || '—'} · ${w.typology || '—'}\nContrato: ${w.date || '—'}\nInício: ${w.datas_execucao?.inicio?.data || '—'} · ${w.datas_execucao?.inicio?.fonte || 'não informado'}\nFim: ${w.datas_execucao?.fim?.data || '—'} · ${w.datas_execucao?.fim?.fonte || 'não informado'} · ${w.datas_execucao?.fim?.tipo || '—'}\nCoerência: ${w.datas_execucao?.situacao || '—'}\n${mode === 'incc' ? `Valor original: ${money(w.originalValue)} · Fator: ${w.factor.toFixed(6)}\n` : ''}Descrição: ${w.description || '—'}\nLink: ${w.link || '—'}`,
+    `ID: ${w.id || '—'}\nObra: ${w.name || '—'}\nInstituição: ${w.institution || '—'} · ${w.university || '—'}\nCampus: ${w.campus || '—'}\nLocal: ${[w.city,w.state].filter(Boolean).join(', ') || '—'}\nTipo: ${w.type || '—'} · ${w.typology || '—'}\nContrato: ${w.date || '—'}\nInício: ${w.datas_execucao?.inicio?.data || '—'} · ${w.datas_execucao?.inicio?.fonte || 'não informado'}\nFim: ${w.datas_execucao?.fim?.data || '—'} · ${w.datas_execucao?.fim?.fonte || 'não informado'} · ${w.datas_execucao?.fim?.tipo || '—'}\nCoerência: ${w.datas_execucao?.situacao || '—'}\n${updated ? `Valor original: ${money(w.originalValue)} · Fator: ${w.factor.toFixed(6)}\n` : ''}Descrição: ${w.description || '—'}\nLink: ${w.link || '—'}`,
     `${n(w.quantity)} ${w.unit === 'm2' ? 'm²' : w.unit}`,
     money(w.value),
     money(w.value / w.quantity),
   ]);
-  if (raw.length) autoTable(doc, { startY:y, head:[['Dados da obra','Quantidade',mode === 'incc' ? 'Atualizado' : 'Contratado','Custo unitário']], body:raw, margin:{left:16,right:16}, styles:{font:'helvetica',fontSize:8,cellPadding:2,overflow:'linebreak'}, headStyles:{fillColor:[20,108,98]}, columnStyles:{0:{cellWidth:100},1:{cellWidth:23},2:{cellWidth:28},3:{cellWidth:27}}, rowPageBreak:'auto' });
+  if (raw.length) autoTable(doc, { startY:y, head:[['Dados da obra','Quantidade',updated ? 'Atualizado' : 'Contratado','Custo unitário']], body:raw, margin:{left:16,right:16}, styles:{font:'helvetica',fontSize:8,cellPadding:2,overflow:'linebreak'}, headStyles:{fillColor:[20,108,98]}, columnStyles:{0:{cellWidth:100},1:{cellWidth:23},2:{cellWidth:28},3:{cellWidth:27}}, rowPageBreak:'auto' });
   else doc.text('Nenhuma referência selecionada.',16,y);
   const total = doc.getNumberOfPages();
   for (let page=1; page<=total; page++) {doc.setPage(page);doc.setFontSize(8);doc.setTextColor(100);doc.text(`${page} / ${total}`, 194, 289, {align:'right'});}

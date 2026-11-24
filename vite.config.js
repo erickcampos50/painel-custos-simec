@@ -9,9 +9,14 @@ const githubPagesBase = repository && !repository.toLowerCase().endsWith('.githu
 
 export default defineConfig({
   base: process.env.GITHUB_ACTIONS === 'true' ? githubPagesBase : '/',
+  build: {
+    rollupOptions: {
+      input: { main: 'index.html', explorador: 'explorador.html', prototipos: 'prototipos.html' },
+    },
+  },
   server: {
     watch: {
-      ignored: ['**/*.csv', '**/*.sqlite', '**/*.sqlite-*'],
+      ignored: ['**/*.csv', '**/*.xls', '**/*.xlsx', '**/*.xlsm', '**/*.sqlite', '**/*.sqlite-*'],
     },
   },
 });

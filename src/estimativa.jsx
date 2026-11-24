@@ -1,0 +1,132 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import { updateWork } from './incc';
+import { durationDays, statistics } from './estimativa-calculos';
+import './estimativa.css';
+
+const fmt = n => n == null || !Number.isFinite(n) ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+const money = n => n == null || !Number.isFinite(n) ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const options = (rows, field) => [...new Set(rows.map(w => w[field]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+const ALL = '*';
+const unitLabel = unit => unit === 'm2' ? 'm²' : unit;
+
+function App() {
+  const [works, setWorks] = useState([]);
+  const [series, setSeries] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [type, setType] = useState(ALL);
+  const [typology, setTypology] = useState(ALL);
+  const [state, setState] = useState('');
+  const [search, setSearch] = useState('');
+  const [showDescriptions, setShowDescriptions] = useState(false);
+  const [unit, setUnit] = useState('m2');
+  const [otherUnit, setOtherUnit] = useState(false);
+  const [area, setArea] = useState('');
+  const [budget, setBudget] = useState('');
+  const [mode, setMode] = useState('incc');
+  const [target, setTarget] = useState('');
+  const [inccLoading, setInccLoading] = useState(true);
+  const [excluded, setExcluded] = useState([]);
+  const [wizard, setWizard] = useState(false);
+  const [wizardStep, setWizardStep] = useState(0);
+  const [scenario, setScenario] = useState('area');
+  const [reportError, setReportError] = useState('');
+  const [inspectedWork, setInspectedWork] = useState(null);
+  const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    fetch(`${import.meta.env.BASE_URL}obras.json`).then(r => { if (!r.ok) throw Error(); return r.json(); }).then(setWorks).catch(() => setError('Não foi possível carregar a base de obras. Recarregue a página para tentar novamente.')).finally(() => setLoading(false));
+    Promise.all(['incc', 'igpm'].map(key => fetch(`${import.meta.env.BASE_URL}${key}.json`).then(r => { if (!r.ok) throw Error(); return r.json(); }).then(data => [key, data]).catch(() => [key, null]))).then(entries => { const data = Object.fromEntries(entries); setSeries(data); setTarget(data.incc?.ultimo_periodo || ''); }).finally(() => setInccLoading(false));
+  }, []);
+  const incc = series[mode] || null;
+  const indices = useMemo(() => Object.fromEntries((incc?.registros || []).map(r => [r.periodo, r.indice])), [incc]);
+  const candidates = useMemo(() => {
+    if (!type || !typology || !unit) return [];
+    const query = search.trim().toLocaleLowerCase('pt-BR');
+    return works.filter(w => (type === ALL || w.type === type) && (typology === ALL || w.typology === typology) && (!state || w.state === state) && w.unit === unit && (!query || [w.id, w.name, w.description, w.institution, w.university, w.campus, w.city, w.state, w.type, w.typology].some(value => String(value || '').toLocaleLowerCase('pt-BR').includes(query))))
+      .map(w => updateWork(w, mode, target, indices));
+  }, [works, type, typology, state, unit, mode, target, indices, search]);
+  const selected = useMemo(() => candidates.filter(w => !excluded.includes(w.key)), [candidates, excluded]);
+  const costWorks = selected.filter(w => w.value > 0 && w.quantity > 0);
+  const timeWorks = selected.map(w => ({ work: w, days: durationDays(w) })).filter(item => item.days != null);
+  const costs = statistics(costWorks.map(w => w.value / w.quantity));
+  const durations = statistics(timeWorks.map(item => item.days));
+  const a = Number(area), b = Number(budget);
+  const hasArea = Number.isFinite(a) && a > 0, hasBudget = Number.isFinite(b) && b > 0;
+  const excludedIncc = mode !== 'nominal' ? candidates.filter(w => w.originalValue > 0 && w.value == null).length : 0;
+  const types = options(works, 'type');
+  const typologies = options(type && type !== ALL ? works.filter(w => w.type === type) : works, 'typology');
+  const typeCounts = works.filter(w => w.unit === unit && (typology === ALL || w.typology === typology) && (!state || w.state === state)).reduce((acc, w) => { if (w.type) acc[w.type] = (acc[w.type] || 0) + 1; return acc; }, {});
+  const facetBase = works.filter(w => w.unit === unit && (type === ALL || w.type === type));
+  const typologyCounts = facetBase.filter(w => !state || w.state === state).reduce((acc, w) => { if (w.typology) acc[w.typology] = (acc[w.typology] || 0) + 1; return acc; }, {});
+  const stateCounts = facetBase.filter(w => typology === ALL || w.typology === typology).reduce((acc, w) => { if (w.state) acc[w.state] = (acc[w.state] || 0) + 1; return acc; }, {});
+  function changeType(v) { setType(v); setExcluded([]); setPage(0); }
+  function changeFilter(setter, value) { setter(value); setExcluded([]); setPage(0); }
+  function changeMode(value) { changeFilter(setMode, value); if (value !== 'nominal') setTarget(series[value]?.ultimo_periodo || ''); }
+  function changeUnit(value) { if (value !== unit) { setUnit(value); setArea(''); setExcluded([]); setPage(0); } }
+  function chooseScenario(value) { setScenario(value); if (value === 'other') { setOtherUnit(true); if (unit === 'm2') changeUnit(''); } else { setOtherUnit(false); if (unit !== 'm2') changeUnit('m2'); } }
+  function toggleWork(key) { setExcluded(current => current.includes(key) ? current.filter(x => x !== key) : [...current, key]); }
+  const filters = { unit, ...(type !== ALL ? { type } : {}), ...(typology !== ALL ? { typology } : {}), ...(state ? { state } : {}) };
+
+  async function report() {
+    setReportError('');
+    try {
+      const { generateFullReport } = await import('./relatorio-completo');
+      generateFullReport({ candidates, selected, costStats: costs, durationStats: durations, filters, search, quantity: hasArea ? a : null, budget: hasBudget ? b : null, mode, target, incc, excludedByIncc: excludedIncc });
+    } catch (e) { console.error(e); setReportError('Não foi possível gerar o PDF. Tente novamente.'); }
+  }
+  const selectFields = <div className="e-fields">
+    {otherUnit && <label>Unidade de medida <span>selecione uma</span><select value={unit} onChange={e => changeUnit(e.target.value)}><option value="">Selecione uma unidade</option>{options(works, 'unit').filter(x => x !== 'm2').map(x => <option value={x} key={x}>{unitLabel(x)}</option>)}</select></label>}
+    <label>Tipo de intervenção <span>opcional</span><select value={type} onChange={e => changeType(e.target.value)}><option value={ALL}>Todos os tipos (comparação ampla)</option>{types.map(x => <option value={x} key={x} disabled={!typeCounts[x] && x !== type}>{x} ({fmt(typeCounts[x] || 0)} obras)</option>)}</select></label>
+    <label>Tipologia <span>opcional</span><select value={typology} onChange={e => changeFilter(setTypology, e.target.value)}><option value={ALL}>Todas as tipologias (comparação ampla)</option>{typologies.map(x => <option value={x} key={x} disabled={!typologyCounts[x] && x !== typology}>{x} ({fmt(typologyCounts[x] || 0)} obras)</option>)}</select></label>
+    <label>Estado das referências <span>opcional</span><select value={state} onChange={e => changeFilter(setState, e.target.value)}><option value="">Todos os estados</option>{options(works, 'state').map(x => <option value={x} key={x} disabled={!stateCounts[x] && x !== state}>{x} ({fmt(stateCounts[x] || 0)} obras)</option>)}</select></label>
+  </div>;
+  const projectFields = <div className="e-fields">
+    <label>{unit === 'm2' ? 'Área da obra' : 'Quantidade da obra'} <span>se conhecida</span><div className="e-input"><input type="number" min="0" value={area} onChange={e => setArea(e.target.value)} placeholder="Ex.: 1000" disabled={!unit} /><span>{unitLabel(unit) || '—'}</span></div></label>
+    <label>Orçamento máximo <span>se conhecido</span><div className="e-input"><span>R$</span><input type="number" min="0" value={budget} onChange={e => setBudget(e.target.value)} placeholder="Ex.: 5000000" /></div></label>
+  </div>;
+  return <div className="est-app">
+    <header className="e-header"><div className="e-wrap e-nav"><div className="e-brand"><span>▦</span><div><strong>REFERÊNCIAS DE CUSTO UNITÁRIO</strong><small>Levantamento de custos de obras de universidades públicas · ferramenta independente</small></div></div></div></header>
+    <main className="e-wrap"><div className="e-intro"><div><div className="e-kicker">APOIO AO PLANEJAMENTO DE OBRAS PÚBLICAS</div><h1>Custo de referência e prazo de obras universitárias</h1><p>Consulte custos por m² ou outras unidades e durações de obras universitárias registradas no SIMEC para apoiar estimativas preliminares.</p><p className="e-intro-context">Indicadores gerais como o CUB do Sinduscon e índices da FGV podem não refletir as particularidades de obras universitárias. Por isso, esta ferramenta utiliza obras das próprias universidades para oferecer uma referência alternativa, potencialmente mais aderente ao objeto analisado. O resultado não é o CUB oficial e depende da comparabilidade e da qualidade dos registros.</p></div><button className="e-assist" onClick={() => { setScenario(otherUnit ? 'other' : 'area'); setWizardStep(0); setWizard(true); }}><span className="e-assist-icon">?</span><span><strong>Precisa de ajuda para começar?</strong><small>Usar o preenchimento assistido →</small></span></button></div>
+      <div className="e-source"><strong>Fonte dos dados: SIMEC / MEC</strong><span>Obras registradas como concluídas · extração de outubro de 2025 · revisão da base não informada</span><a href="#metodologia">Fonte e limitações ↓</a></div>
+      <div className="e-advanced"><div><strong>Precisa explorar os dados com mais liberdade?</strong><span>Use filtros detalhados, gráficos e a tabela completa para examinar as obras e selecionar referências.</span></div><a href={`${import.meta.env.BASE_URL}explorador.html`}>Abrir exploração avançada →</a></div>
+      {loading && <div className="e-message">Carregando a base de obras…</div>}{error && <div className="e-alert" role="alert">{error}</div>}
+      {!loading && !error && <div className="e-layout"><div className="e-left">
+        <section className="e-card"><div className="e-section-label">01 / CARACTERÍSTICAS</div><div className="e-refine-heading"><h2>Refine as referências</h2><button className="e-outline" onClick={() => { if (otherUnit) { setOtherUnit(false); changeUnit('m2'); } else { setOtherUnit(true); changeUnit(''); } }}>{otherUnit ? 'Minha obra é definida por área (m²)' : 'Minha obra não é definida por área'}</button></div><p>Selecione características comparáveis ao objeto. {otherUnit ? 'Escolha uma unidade da base; unidades diferentes são mantidas separadas.' : 'O recorte considera obras medidas em m².'}</p>{selectFields}<p className="e-note">As contagens nas listas mostram obras na unidade e nos demais filtros selecionados, independentemente de terem custo ou datas válidos. A seleção manual e a atualização monetária não alteram essas contagens.</p>{(type === ALL || typology === ALL) && <div className="e-alert">Recorte amplo: tipos ou tipologias diferentes podem não ser comparáveis. Refine os filtros e revise as obras antes de usar o resultado.</div>}</section>
+        <section className="e-card"><div className="e-section-label">02 / DADOS DO PROJETO</div><h2>O que já se sabe sobre a obra?</h2><p>Informe a {unit === 'm2' ? 'área' : 'quantidade'}, o orçamento disponível ou ambos. O orçamento não filtra os contratos históricos.</p>{projectFields}</section>
+        <section className="e-card"><div className="e-section-label">03 / VALORES MONETÁRIOS</div><h2>Condição dos valores</h2><label className="e-label">Atualização monetária<select value={mode} onChange={e => changeMode(e.target.value)}><option value="nominal">Valores nominais, sem atualização</option><option value="incc" disabled={!series.incc && !inccLoading}>INCC-Brasil-DI</option><option value="igpm" disabled={!series.igpm}>IGP-M</option></select></label>{mode !== 'nominal' && incc && <label className="e-label">Mês de referência<select value={target} onChange={e => changeFilter(setTarget, e.target.value)}>{incc.registros.slice().reverse().map(r => <option key={r.periodo} value={r.periodo}>{r.periodo.slice(5)}/{r.periodo.slice(0, 4)}</option>)}</select></label>}<p className="e-note">{mode === 'nominal' ? 'Os contratos são de datas diferentes e não foram atualizados. A comparação com um orçamento atual tem limitação relevante.' : inccLoading ? 'Carregando os índices…' : !incc ? 'Não foi possível carregar a série. Recarregue a página ou selecione valores nominais.' : `${incc.nome} · FGV IBRE · cobertura ${incc.primeiro_periodo} a ${incc.ultimo_periodo}.`}</p></section>
+      </div><div className="e-right"><section className="e-card e-results"><div className="e-section-label">RESULTADO DO RECORTE</div><h2>Referências para a estimativa</h2><p>Os resultados mudam conforme os dados e as obras selecionadas.</p>
+        {!unit ? <div className="e-empty"><strong>Selecione uma unidade de medida</strong><p>Escolha, por exemplo, Furo, m ou Unidade para consultar as referências correspondentes.</p></div> : !selected.length ? <div className="e-empty"><strong>Nenhuma referência selecionada</strong><p>Altere os critérios ou revise a seleção de obras.</p></div> : <><div className="e-count">{selected.length} obras selecionadas · {costs.count} com custo válido · {durations.count} com duração informada</div>
+          <div className="e-metrics"><article className="e-metric main"><span>CUSTO UNITÁRIO DE REFERÊNCIA</span><strong>{costs.count ? `${money(costs.median)} / ${unitLabel(unit)}` : '—'}</strong><p>{costs.count ? `Faixa P25–P75: ${money(costs.q1)} a ${money(costs.q3)} / ${unitLabel(unit)}` : 'Nenhuma obra selecionada com valor e quantidade válidos na condição monetária escolhida.'}</p><small>Mediana do valor contratado por {unitLabel(unit)} · {costs.count} obras · não é o CUB oficial</small></article>
+          {hasArea && <article className="e-metric"><span>CUSTO TOTAL ESTIMADO</span><strong>{costs.count ? money(a * costs.median) : '—'}</strong><p>{costs.count ? `Faixa P25–P75: ${money(a * costs.q1)} a ${money(a * costs.q3)}` : 'Sem referências com custo válido.'}</p><small>Mediana do custo por {unitLabel(unit)} × {unit === 'm2' ? 'área' : 'quantidade'} informada</small></article>}
+          {hasBudget && <article className="e-metric"><span>{unit === 'm2' ? 'ÁREA' : 'QUANTIDADE'} INDICATIVA PELO ORÇAMENTO</span><strong>{costs.count ? `${fmt(b / costs.median)} ${unitLabel(unit)}` : '—'}</strong><p>{costs.count ? `Faixa P25–P75 de custo: ${fmt(b / costs.q3)} a ${fmt(b / costs.q1)} ${unitLabel(unit)}` : 'Sem referências de custo válidas.'}</p><small>Não garante que o escopo seja viável.</small></article>}
+          <article className="e-metric"><span>DURAÇÃO OBSERVADA NAS REFERÊNCIAS</span><strong>{durations.count ? `${fmt(durations.median)} dias` : '—'}</strong><p>{durations.count ? `P25–P75: ${fmt(durations.q1)} a ${fmt(durations.q3)} dias` : 'Nenhuma obra com início e conclusão informados e coerentes.'}</p><small>{durations.count} obras · não é previsão específica da obra</small></article>
+          {hasArea && hasBudget && costs.count > 0 && <article className="e-metric"><span>COMPARAÇÃO COM O ORÇAMENTO</span><strong>{a * costs.median <= b ? 'Abaixo do limite' : 'Acima do limite'}</strong><p>Diferença: {money(Math.abs(b - a * costs.median))} em relação à estimativa central.</p><small>Não é uma análise de viabilidade.</small></article>}</div>
+          <div className="e-alert">{(costs.count < 5 || durations.count < 5) && 'Há menos de 5 referências em pelo menos um dos indicadores; uma amostra pequena pode ser pouco representativa. '}As durações são históricas e não são ajustadas automaticamente ao porte. Confirme a comparabilidade das obras. A faixa P25–P75 descreve os dados; não é garantia nem intervalo de confiança.</div>
+          <button className="e-button" disabled={mode !== 'nominal' && (inccLoading || !incc)} onClick={report}>↓ Gerar relatório completo em PDF</button><p className="e-note">O relatório reúne os critérios, os indicadores disponíveis, as limitações e as obras selecionadas e excluídas.</p>{reportError && <p role="alert">{reportError}</p>}
+        </>}</section></div></div>}
+      {!loading && !error && type && typology && unit && <section className="e-card e-references"><div className="e-reference-head"><div><div className="e-section-label">FUNDAMENTAÇÃO</div><h2>Obras do recorte</h2><p>Desmarque obras que não são comparáveis. Selecione o nome para inspecionar os dados.</p></div><div className="e-reference-actions"><button className="e-outline" aria-pressed={showDescriptions} onClick={() => setShowDescriptions(value => !value)}>{showDescriptions ? 'Ocultar descrições' : 'Exibir descrições'}</button><button className="e-outline" onClick={() => setExcluded([])}>Selecionar todas</button></div></div><label className="e-search">Busca livre nas obras<input type="search" value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} placeholder="Nome, descrição, instituição, ID ou local" /></label><p className="e-note">A busca filtra as obras e recalcula os indicadores; as contagens nas listas acima não consideram a busca.</p><div className="e-table-wrap"><table><thead><tr><th>Usar</th><th>Obra / instituição</th><th>Tipo / tipologia</th><th>Quantidade ({unitLabel(unit)})</th><th>Valor {mode !== 'nominal' ? 'atualizado' : 'contratado'}</th><th>Duração informada</th></tr></thead><tbody>{candidates.slice(page * 20, (page + 1) * 20).map(w => { const d = durationDays(w); return <tr key={w.key}><td><input type="checkbox" checked={!excluded.includes(w.key)} onChange={() => toggleWork(w.key)} aria-label={`Usar ${w.name || w.id}`} /></td><td><button className="e-work-link" onClick={() => setInspectedWork(w)}>{w.name || `Obra ${w.id}`}</button><small>{w.institution || '—'} · {w.state || '—'} · ID {w.id}</small>{showDescriptions && <p className="e-description"><strong>Descrição cadastrada no SIMEC:</strong> {w.description || 'Não informada.'}</p>}</td><td>{w.type || '—'}<small>{w.typology || '—'}</small></td><td>{w.quantity > 0 ? `${fmt(w.quantity)} ${unitLabel(unit)}` : '—'}</td><td>{money(w.value)}</td><td>{d != null ? `${fmt(d)} dias` : 'Não disponível'}</td></tr>; })}</tbody></table></div><div className="e-pagination"><span>{candidates.length} obras no recorte · {selected.length} selecionadas em todas as páginas</span><div><button className="e-outline" disabled={page === 0} onClick={() => setPage(page - 1)}>Anterior</button><span> Página {page + 1} de {Math.max(1, Math.ceil(candidates.length / 20))} </span><button className="e-outline" disabled={(page + 1) * 20 >= candidates.length} onClick={() => setPage(page + 1)}>Próxima</button></div></div></section>}
+      <section id="metodologia" className="e-card e-method"><div className="e-section-label">FONTE E MÉTODO</div><h2>Como interpretar os resultados</h2><p>A fonte é a extração de outubro de 2025 de obras concluídas do SIMEC/MEC. Esta ferramenta é independente, gratuita e não possui vínculo institucional com o SIMEC ou o MEC. Os registros não foram auditados individualmente e podem conter duplicidades, valores extremos e dados inconsistentes.</p><p>O custo unitário é o valor contratado dividido pela quantidade, sempre na unidade selecionada. Unidades registradas de forma diferente, como m e metro, permanecem separadas e não são convertidas automaticamente. A estimativa usa a mediana das obras selecionadas; o valor contratado não é necessariamente o custo final. O orçamento dividido pela mediana oferece apenas uma quantidade indicativa. Não é o CUB oficial nem substitui orçamento detalhado.</p><p>A duração considera somente início de execução e conclusão informados, coerentes e com intervalo positivo; não usa assinatura, ordem de serviço, datas de vistoria ou términos previstos como conclusão. Custos e durações podem ter quantidades diferentes de referências. Obras pequenas e grandes não são automaticamente ajustadas ao projeto.</p><p>As séries INCC-Brasil-DI e IGP-M foram fornecidas a partir do FGV IBRE. A assinatura do contrato é apenas uma aproximação da data-base; registros sem índice ou posteriores ao mês escolhido não são atualizados. Confira as referências e premissas antes de utilizar os resultados.</p></section>
+    </main><footer className="e-footer">Fonte: SIMEC / MEC · extração outubro de 2025 · Ferramenta independente e gratuita</footer>
+    {inspectedWork && <WorkDetails work={inspectedWork} mode={mode} target={target} onClose={() => setInspectedWork(null)} />}
+    {wizard && <div className="e-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setWizard(false); }}><div className="e-dialog" role="dialog" aria-modal="true" aria-labelledby="wizard-title"><div className="e-dialog-head"><span>CAMINHO ASSISTIDO · {wizardStep + 1} DE 3</span><button aria-label="Fechar assistência" onClick={() => setWizard(false)}>×</button></div>{wizardStep === 0 && <><h2 id="wizard-title">O que você deseja consultar?</h2><p>Escolha a opção mais próxima da sua situação. Os campos são opcionais.</p><div className="e-choices">{[['area','Tenho a área aproximada da construção e desejo estimar o custo'],['budget','Tenho o orçamento máximo para construção e desejo saber qual área posso construir'],['other','Minha obra não é definida por área e quero ajuda']].map(([v, label]) => <button key={v} className={scenario === v ? 'selected' : ''} aria-pressed={scenario === v} onClick={() => chooseScenario(v)}>{label}<span>{scenario === v ? '✓' : '→'}</span></button>)}</div></>}{wizardStep === 1 && <><h2 id="wizard-title">{scenario === 'other' ? 'Escolha a unidade e obras semelhantes' : 'Selecione obras semelhantes'}</h2><p>{scenario === 'other' ? 'Selecione a unidade usada para medir a obra, como Furo. Cada unidade é analisada separadamente. ' : ''}Tipo, tipologia e estado são opcionais, mas ajudam a escolher um recorte mais útil.</p>{selectFields}</>}{wizardStep === 2 && <><h2 id="wizard-title">Dados disponíveis</h2><p>{scenario === 'area' ? 'Se desejar, informe a área da obra.' : scenario === 'budget' ? 'Se desejar, informe o orçamento máximo disponível.' : 'Se desejar, informe a quantidade da obra ou o orçamento máximo.'} Todos os campos são opcionais.</p>{projectFields}<p className="e-note">Os dados são usados na tela principal e permanecem editáveis.</p></>}<div className="e-dialog-actions">{wizardStep > 0 && <button className="e-outline" onClick={() => setWizardStep(wizardStep - 1)}>← Voltar</button>}<button className="e-button" onClick={() => wizardStep < 2 ? setWizardStep(wizardStep + 1) : setWizard(false)}>{wizardStep < 2 ? 'Continuar →' : 'Ver resultados →'}</button></div></div></div>}
+  </div>;
+}
+function WorkDetails({ work: w, mode, target, onClose }) {
+  const dates = w.datas_execucao || {};
+  const date = d => d ? `${d.data} · ${d.tipo} · ${d.fonte}` : 'Não informado';
+  const duration = durationDays(w);
+  const rows = [
+    ['ID', w.id], ['Instituição', w.institution], ['Universidade', w.university], ['Campus', w.campus],
+    ['Local', [w.city, w.state].filter(Boolean).join(', ')], ['Tipo', w.type], ['Tipologia', w.typology],
+    ['Quantidade', w.quantity > 0 ? `${fmt(w.quantity)} ${unitLabel(w.unit)}` : null],
+    ['Valor contratado original', money(w.originalValue)],
+    ...(mode !== 'nominal' ? [[`Valor atualizado · ${mode === 'igpm' ? 'IGP-M' : 'INCC-Brasil-DI'} ${target}`, money(w.value)], ['Fator de atualização', w.factor == null ? 'Não disponível' : w.factor.toFixed(6)]] : []),
+    ['Custo unitário usado', w.value > 0 && w.quantity > 0 ? `${money(w.value / w.quantity)} / ${unitLabel(w.unit)}` : 'Não disponível'],
+    ['Data do contrato', w.date], ['Início adotado', date(dates.inicio)], ['Fim adotado', date(dates.fim)],
+    ['Coerência das datas', dates.situacao], ['Duração informada', duration == null ? 'Não disponível' : `${fmt(duration)} dias`],
+  ];
+  return <div className="e-overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}><div className="e-dialog e-work-dialog" role="dialog" aria-modal="true" aria-labelledby="work-title"><div className="e-dialog-head"><span>DADOS DA OBRA · BASE SIMEC</span><button aria-label="Fechar detalhes da obra" onClick={onClose}>×</button></div><h2 id="work-title">{w.name || `Obra ${w.id}`}</h2><p><strong>Descrição cadastrada no SIMEC:</strong> {w.description || 'Não informada.'}</p><dl>{rows.map(([label, value]) => <div className="e-detail-row" key={label}><dt>{label}</dt><dd>{value || 'Não informado'}</dd></div>)}</dl><details><summary>Datas originais da base</summary><dl>{Object.entries(w.datas_originais || {}).map(([label, value]) => <div className="e-detail-row" key={label}><dt>{label}</dt><dd>{value || 'Não informado'}</dd></div>)}</dl></details><p className="e-note">Dados disponíveis na extração publicada pela ferramenta; não representam necessariamente todos os campos do SIMEC.</p>{w.link && <p><a href={w.link} target="_blank" rel="noreferrer">Consultar registro no SIMEC ↗</a></p>}<div className="e-dialog-actions"><button className="e-outline" onClick={onClose}>Fechar</button></div></div></div>;
+}
+createRoot(document.getElementById('root')).render(<App />);
